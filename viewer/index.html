@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>观星器</title>
+<style>
+  :root {
+    --panel: rgba(14, 18, 28, 0.86);
+    --line: rgba(140, 160, 200, 0.25);
+    --text: #d8deea;
+    --dim: #8b95a8;
+    --accent: #e8c48a;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: #000; color: var(--text);
+    font: 13px/1.45 system-ui, "Microsoft YaHei", "PingFang SC", sans-serif; overflow: hidden; }
+  #gl, #ov { position: fixed; inset: 0; width: 100%; height: 100%; display: block; }
+  #ov { pointer-events: none; }
+  #ui { position: fixed; top: 10px; left: 10px; width: 300px; max-height: calc(100% - 20px); overflow-y: auto;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+  #ui h1 { font-size: 15px; margin: 0 0 6px; color: var(--accent); font-weight: 600; }
+  .row { display: flex; align-items: center; gap: 6px; margin: 5px 0; }
+  .row label { width: 52px; color: var(--dim); flex: none; }
+  .row input[type=range] { flex: 1; min-width: 0; }
+  .row input[type=number] { width: 80px; background: #0b0f18; color: var(--text); border: 1px solid var(--line); border-radius: 4px; padding: 2px 4px; }
+  .row .val { width: 74px; text-align: right; font-variant-numeric: tabular-nums; flex: none; }
+  .btns { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0; }
+  button { background: #1a2233; color: var(--text); border: 1px solid var(--line); border-radius: 4px; padding: 3px 8px; cursor: pointer; font: inherit; }
+  button.on { background: #3a3220; border-color: var(--accent); color: var(--accent); }
+  button:hover { filter: brightness(1.25); }
+  .checks { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 8px; margin-top: 6px; }
+  .checks label { color: var(--dim); cursor: pointer; }
+  #status { color: var(--dim); margin-top: 6px; font-size: 12px; white-space: pre-line; }
+  #info { position: fixed; top: 10px; right: 10px; width: 300px; max-height: calc(100% - 20px); overflow-y: auto;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; display: none; }
+  #info h2 { font-size: 14px; margin: 0 0 6px; color: var(--accent); }
+  #info table { border-collapse: collapse; width: 100%; }
+  #info td { padding: 1px 0; vertical-align: top; }
+  #info td:first-child { color: var(--dim); width: 92px; }
+  #info .note { color: var(--dim); font-size: 12px; margin-top: 6px; }
+  #info .close { float: right; cursor: pointer; color: var(--dim); }
+  #info h3 { font-size: 13px; margin: 10px 0 4px; color: var(--accent); font-weight: 600; }
+  #info table.members td { padding: 3px 0; border-top: 1px solid var(--line); }
+  #info table.members td:first-child { width: 40px; color: var(--text); }
+  #info table.members tr { cursor: pointer; }
+  #info table.members tr:hover td, #info table.members tr.cur td { background: rgba(232,196,138,0.10); }
+  #info .dim { color: var(--dim); font-size: 12px; }
+  #events { margin-top: 6px; font-size: 12px; color: var(--dim); max-height: 140px; overflow-y: auto; }
+  #events div { cursor: pointer; }
+  #events div:hover { color: var(--text); }
+  #search { position: fixed; top: 10px; right: 10px; width: 340px; max-height: calc(100% - 20px); overflow-y: auto;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; display: none; }
+  #search h2 { font-size: 14px; margin: 0 0 6px; color: var(--accent); }
+  #search .close { float: right; cursor: pointer; color: var(--dim); }
+  #search .f { display: grid; grid-template-columns: 64px 1fr 1fr; gap: 4px; align-items: center; margin: 3px 0; }
+  #search .f label { color: var(--dim); }
+  #search .f.one { grid-template-columns: 64px 1fr; }
+  #search input[type=number], #search input[type=text], #search select { width: 100%; min-width: 0; background: #0b0f18; color: var(--text);
+    border: 1px solid var(--line); border-radius: 4px; padding: 2px 4px; font: inherit; }
+  #search .letters { display: flex; flex-wrap: wrap; gap: 2px 8px; }
+  #search .letters label { color: var(--text); cursor: pointer; }
+  #sres { margin-top: 6px; font-size: 12px; }
+  #sres table { border-collapse: collapse; width: 100%; }
+  #sres td { padding: 1px 3px; white-space: nowrap; }
+  #sres tr { cursor: pointer; }
+  #sres tr:hover td { background: rgba(232,196,138,0.12); }
+  #sres .dim { color: var(--dim); }
+  body.searching #info { right: 360px; }
+  #load { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; color: var(--dim); font-size: 15px; }
+  @media (max-width: 700px) { #ui { width: calc(100% - 20px); max-height: 45%; } #info { top: auto; bottom: 10px; width: calc(100% - 20px); max-height: 40%; } }
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<canvas id="ov"></canvas>
+<div id="load">正在读取星表…</div>
+<div id="ui">
+  <h1>观星器 · 北纬 <span id="latv"></span>°</h1>
+  <div class="row"><label>年份</label><input type="number" id="year" step="1"><input type="range" id="yearR" min="-8000" max="2000" step="10"></div>
+  <div class="row"><label>日期</label><input type="range" id="day" min="1" max="365" step="1"><span class="val" id="dayv"></span></div>
+  <div class="row"><label>时刻</label><input type="range" id="hour" min="0" max="24" step="0.05"><span class="val" id="hourv"></span></div>
+  <div class="btns">
+    <button id="play">▶ 播放</button>
+    <button data-speed="60">1 分/帧</button>
+    <button data-speed="600">10 分/帧</button>
+    <button data-speed="86164">1 日/帧</button>
+  </div>
+  <div class="btns">
+    <button id="mNaked" class="on">肉眼</button>
+    <button id="mTel">望远镜</button>
+    <button id="look">朝向：南</button>
+    <button id="bSearch">搜索恒星 (F)</button>
+  </div>
+  <div class="row"><label>银河</label><input type="range" id="bgGain" min="0" max="3" step="0.05" value="1"><span class="val" id="bgv"></span></div>
+  <div class="row"><label>星点</label><input type="range" id="starGain" min="0.5" max="2" step="0.05" value="1"><span class="val" id="sgv"></span></div>
+  <div class="checks">
+    <label><input type="checkbox" id="cGrid"> 地平网格</label>
+    <label><input type="checkbox" id="cEq"> 赤道网格</label>
+    <label><input type="checkbox" id="cEcl" checked> 黄道</label>
+    <label><input type="checkbox" id="cDso"> 深空天体</label>
+    <label><input type="checkbox" id="cExt" checked> 大气消光</label>
+    <label><input type="checkbox" id="cMoon" checked> 月亮</label>
+    <label><input type="checkbox" id="cEv" checked> 客星/彗星</label>
+    <label><input type="checkbox" id="cLab"> 亮星编号</label>
+    <label><input type="checkbox" id="cSee"> 地面透视 (G)</label>
+  </div>
+  <div id="status"></div>
+  <div id="events"></div>
+</div>
+<div id="info"></div>
+<div id="search">
+  <span class="close" id="sClose">✕</span><h2>恒星搜索</h2>
+  <div class="f one"><label>编号</label><input type="text" id="qId" placeholder="编号的一部分"></div>
+  <div class="f"><label>视星等</label><input type="number" id="qV0" step="0.1" placeholder="最亮"><input type="number" id="qV1" step="0.1" placeholder="最暗"></div>
+  <div class="f"><label>距离 pc</label><input type="number" id="qD0" placeholder="最近"><input type="number" id="qD1" placeholder="最远"></div>
+  <div class="f one"><label>光谱型</label><div class="letters" id="qSpt"></div></div>
+  <div class="f one"><label>光度级</label><select id="qLum">
+    <option value="">任意</option><option value="I">超巨星 I</option><option value="II">亮巨星 II</option><option value="III">巨星 III</option>
+    <option value="IV">亚巨星 IV</option><option value="V">主序 V</option><option value="D">白矮星</option></select></div>
+  <div class="f one"><label>演化阶段</label><select id="qPh"></select></div>
+  <div class="f one"><label>变星</label><select id="qVar"></select></div>
+  <div class="f one"><label>几合星</label><select id="qMult">
+    <option value="">任意</option><option value="1">单星</option><option value="2">双星</option><option value="3">三合星</option>
+    <option value="m">有伴星</option><option value="t">伴星望远镜可分开</option><option value="n">伴星肉眼可分开</option></select></div>
+  <div class="f"><label>星团</label><select id="qCl"><option value="">任意</option><option value="y">成员</option><option value="n">非成员</option></select><input type="text" id="qClN" placeholder="名字"></div>
+  <div class="f"><label>温度 K</label><input type="number" id="qT0"><input type="number" id="qT1"></div>
+  <div class="f"><label>质量 M☉</label><input type="number" id="qM0" step="0.1"><input type="number" id="qM1" step="0.1"></div>
+  <div class="f"><label>年龄 Myr</label><input type="number" id="qA0"><input type="number" id="qA1"></div>
+  <div class="f"><label>绝对星等</label><input type="number" id="qMV0" step="0.1"><input type="number" id="qMV1" step="0.1"></div>
+  <div class="f"><label>消光</label><input type="number" id="qE0" step="0.1"><input type="number" id="qE1" step="0.1"></div>
+  <div class="f"><label>颜色 B−V</label><input type="number" id="qB0" step="0.1"><input type="number" id="qB1" step="0.1"></div>
+  <div class="f one"><label>排序</label><select id="qSort">
+    <option value="V">由亮到暗</option><option value="d">由近到远</option><option value="-mass">质量由大到小</option>
+    <option value="-teff">温度由高到低</option><option value="MV">本身最亮（绝对星等）</option><option value="age">由年轻到老</option></select></div>
+  <div class="checks">
+    <label><input type="checkbox" id="qUp"> 只看此刻地平线上</label>
+    <label><input type="checkbox" id="qMark" checked> 在天上标出</label>
+    <label><input type="checkbox" id="qVis" checked> 只看当前模式可见</label>
+  </div>
+  <div class="btns"><button id="qGo">搜索</button><button id="qClear">清空条件</button></div>
+  <div id="sres"></div>
+</div>
+<script src="app.js"></script>
+</body>
+</html>

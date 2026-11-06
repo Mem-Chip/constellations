@@ -1,0 +1,39 @@
+# # 手动覆盖示例。复制成 overrides.yaml 才会生效；改完运行：
+# #   .venv/Scripts/python.exe generate.py --overrides-only
+# # （约半分钟，不重新采样；只有超新星遗迹变了才会自动重画背景）
+# #
+# # 编号在观星器里点星或用搜索器查（"编号"一栏），或者看 out/truth_catalog.csv。
+# # 一个 set 里可以同时写多个键，生效顺序：位置 → 物理（光谱型 / 阶段 / 质量年龄）→ 温度 / 光度 / 绝对星等 → 视星等。
+
+# # 改一颗星
+# - id: 201d549f6b69-000
+#   set:
+#     name: 大火                    # 星名
+#     spectral_type: M1Ib           # 按光谱型反推质量、阶段、年龄（用同一套演化模型，温度、光度、半径自洽）
+#     mass_msun: 15                 # 和 spectral_type 一起写时，作为反推的偏好质量
+#     # phase: CHeB                 # 演化阶段 MS/SG/RGB/CHeB/AGB/WD；可配 phase_frac: 0.8（阶段内进度 0–1）
+#     # age_myr: 12                 # 年龄（和 mass_msun 一起重算演化）
+#     # teff: 3600                  # 直接改表面温度（光度不变）
+#     # luminosity_lsun: 60000      # 直接改光度
+#     # abs_mag: -5.2               # 直接改绝对星等
+#     # distance_pc: 170            # 改距离（方向不变）
+#     # gal_lon_lat_deg: [351.9, 15.1]   # 改方向（银经、银纬；距离不变）
+#     apparent_mag: 0.9             # 调到这个视星等：沿视线挪距离（算上消光）
+
+# # 指定这颗星在某年爆发超新星
+# #   year 在故事当下（0 年）之前：当下星表里已经没有它，留下遗迹（进深空天体表和背景）；
+# #   year 在之后：它现在还在天上，观星器里到那天会爆发、然后消失。
+# - id: 201d549f6b69-000
+#   op: supernova
+#   year: 812
+#   day: 140                        # 可选
+#   # peak_abs_mag: -17.5           # 可选；默认按配置（白矮星为 Ia 型，其余为核坍缩型）
+
+# # 删一颗星
+# # - id: c9f0e1a2b3c4-003
+# #   op: remove
+
+# # 加一颗星
+# # - op: add
+# #   star: {gal_lon_lat_deg: [10, 5], distance_pc: 4.2, spectral_type: M5V, name: 近邻}
+# #   # 也可以用 mass_msun + phase（+ phase_frac 或 age_gyr），距离可以换成 apparent_mag

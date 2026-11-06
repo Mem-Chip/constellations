@@ -1,0 +1,421 @@
+# =====================================================================
+#  架空世界星空生成 · 配置文件（第 2 版：按耦合关系分组）
+# ---------------------------------------------------------------------
+#  约定：
+#    - 角度单位：度；距离单位在键名里注明（pc = 秒差距，kpc = 千秒差距）
+#    - [待定]  还没定的项，目前填的是"类地球"默认值
+#    - [推导]  由程序算出，写在这里只是说明，不必手动填
+#    - auto    表示"由程序按耦合关系推导"，也可以改成具体数值强制覆盖
+#    - 生成过程是决定论的：同一份配置 + 同一个种子 = 同一片星空
+#
+#  分组原则：互相牵连的参数放在同一节，改一个时能看见受影响的其他项。
+#    1. sky_clock      行星 + 卫星 + 岁差 + 宿 + 黄道光 + 观测地点
+#    2. galaxy         星系结构 + 星系朝向 + 背景贴图里的银河
+#    3. dust           三维尘埃云 + 背景暗带 + 消光与变红
+#    4. stars          恒星族群：质量、年龄、金属丰度、运动
+#    5. evolution      演化阶段 + 由阶段决定的脉动变星
+#    6. multiplicity   双星与聚星 + 食变星
+#    7. clusters       星团年龄 + 成员类型 + 关联的亮星云
+#    8. observing      大气 + 肉眼 + 望远镜 + 双星可分辨性 + 世界内星表
+#    9. events         历史上的超新星、新星、彗星
+#   10. landmarks      地标约束、邻近星系、手动天体
+#   11. overrides      手动覆盖层
+#   12. output         输出
+#   13. culture        星座连线与命名（下一阶段，先占位）
+# =====================================================================
+
+meta:
+  seed: 114514               # 总随机种子；各子模块从它派生自己的种子
+  config_version: 2
+  generation_mag_limit: auto   # auto = 望远镜极限星等 + margin_mag（见 observing.telescope）
+  generation_margin_mag: 2.0   #   默认极限约 9 等 → 生成到约 11 等
+  deep_field_on_demand: true   # 更暗的星按天区按需生成（空间格子哈希，结果稳定）
+  spatial_cell_size_pc: 50     # 空间格子大小；星的编号 = 格子哈希 + 格内序号
+
+# ---------------------------------------------------------------------
+# 1. 天球时钟：行星、卫星、岁差、宿
+#    耦合链：卫星质量/距离 → 岁差周期 → 春分点移动速度
+#            卫星恒星月 → 宿的数量
+#            黄道 → 黄道光的位置
+#            纬度 → 哪些天区终年不落 / 永远看不见
+# ---------------------------------------------------------------------
+sky_clock:
+  orbit:
+    year_days: 365.1244              # [待定] 回归年长度
+    eccentricity: 0.017            # [待定]
+
+  rotation:
+    sidereal_day_hours: 23.93      # [待定]
+    obliquity_deg: 25.0            # 黄赤夹角
+    obliquity_oscillation:         # 黄赤夹角本身的缓慢摆动（可选）
+      enabled: true
+      amplitude_deg: 1.2
+      period_yr: 41000
+    equinox_ecl_lon_at_reference_deg: 0   # 参考年份时的春分点黄经（定义黄经零点）
+
+  moons:                           # [待定] 数量和轨道
+    - name: moon_1
+      mass_rel_earth_moon: 1.0     # 质量（以地球的月亮为 1）
+      semi_major_axis_rel: 1.0     # 轨道半径（以地月距离为 1）
+      sidereal_period_days: 27.30566  # 恒星月
+      inclination_to_ecliptic_deg: 5.1
+      node_regression_period_yr: 18.6
+      apparent_mag_full: -12.7
+
+  precession:
+    period_yr: 26000
+
+  lunar_mansions:                  # 宿：月亮每晚所在的星区
+    count: auto                    # auto = round(主卫星恒星月天数) → 默认 27；地球历史上用 28
+    from_moon: moon_1
+    #   宿沿黄道（实际是白道）划分；岁差会让宿与节气的对应慢慢错开
+
+  zodiacal_light:                  # 沿黄道的微光（位置由黄道决定，所以放在这里）
+    enabled: true
+    brightness: 1.0
+
+  wanderers:                       # 同一星系里肉眼可见的其他行星（"五星"之类）
+    mode: auto                     # auto | manual
+    auto:
+      count: 5
+      inner_count: 2               # 内行星：只在晨昏出现，离太阳不远
+      inclination_deg: [0, 7]
+      peak_mag: [-4.5, 1.5]
+    manual: []
+    #   manual 示例：
+    #   - name: 赤星
+    #     semi_major_axis_au: 1.52
+    #     inclination_deg: 1.8
+    #     color: red
+
+  site:
+    latitude_deg: 35.0             # 北纬 35°
+    #   [推导] 赤纬 > 55° 的星终年不落，赤纬 < -55° 的星永远看不见
+    #   [推导] 在整个岁差周期里，只有南黄极周围约 10° 的区域任何时代都看不见
+    longitude_deg: 0               # 只影响当地时间换算
+    elevation_m: 500
+
+# ---------------------------------------------------------------------
+# 2. 星系：结构 + 朝向 + 背景里的银河
+#    耦合链：盘的标高 → 银河带的宽度
+#            黄银夹角 + 银心方向 → 银河在天上的位置、哪个季节能看到银心
+#            旋臂位置 → 亮蓝星集中在哪些方向
+#    背景贴图里的银河光由这里的模型积分得到，不单独设定位置。
+# ---------------------------------------------------------------------
+galaxy:
+  type: spiral                     # spiral（有银河带）| elliptical（没有银河带，只有均匀天光）
+
+  observer:                        # 观察者在星系里的位置与运动
+    galactocentric_kpc: 8.0
+    height_pc: 20                  # 离盘面的高度（正 = 银北方向）
+    peculiar_velocity_kms: 18      # 观察者所在恒星自身的运动
+    apex_gal_lon_lat_deg: [56, 23] # [待定] 朝哪个方向运动
+
+  orientation:                     # 银道 → 黄道：一次固定的旋转
+    ecliptic_galactic_inclination_deg: 75   # 黄银夹角（地球约 60）
+    galactic_ascending_node_ecl_lon_deg: 180   # [待定] 银道面在黄道上的升交点黄经
+    galactic_center_from_node_deg: 40          # [待定] 沿银道从升交点到银心的角度
+    #   [推导] 银极的黄纬 = 90 - 75 = 15°
+    #   这两项合起来决定银心在哪个黄经、哪个季节夜里能看到最亮的银河段
+
+  local_stellar_density_per_pc3: 0.15  # 太阳附近约 0.1；整体乘数，决定"天有多满"
+
+  thin_disk:
+    scale_length_kpc: 2            # 径向：离中心越远越稀
+    scale_height_pc: 300           # 垂直：决定银河带有多窄
+  thick_disk:
+    local_fraction: 0.10           # 在观察者附近，厚盘恒星所占比例
+    scale_length_kpc: 3.5
+    scale_height_pc: 900
+    age_gyr: [9, 12]               # 厚盘全是老恒星
+  bulge:
+    brightness: 1.0                # 银心方向背景光的亮度倍数
+    radius_kpc: 1.5
+
+  spiral_arms:
+    enabled: true
+    count: 4
+    pitch_angle_deg: 12
+    width_pc: 400
+    young_star_contrast: 3.0       # 年轻的 O、B 型星在旋臂里的密度是臂间的几倍
+    observer_offset_from_arm_pc: 100   # 0 = 正好在旋臂中；越大越偏向臂间
+
+  milky_way_background:            # 背景贴图里"看不清的星"的总光
+    unresolved_starlight: derived  # 对上面的盘、核球、旋臂模型积分（只计比生成极限更暗的星）
+    noise:                         # 叠加的细碎结构
+      octaves: 6
+      strength: 0.35
+
+# ---------------------------------------------------------------------
+# 3. 尘埃：消光 + 三维尘埃云 + 背景暗带
+#    同一份三维尘埃场同时用于：
+#      - 单颗恒星的消光和变红
+#      - 背景银河光的积分（暗带自然出现，与挡住的星位置一致）
+# ---------------------------------------------------------------------
+dust:
+  mean_extinction_mag_per_kpc: 1.0   # 盘面内平均消光（V 波段）
+  scale_height_pc: 110               # 尘埃比恒星更集中在盘面
+  reddening_Rv: 3.1                  # 消光与变红之间的比例：E(B-V) = A_V / Rv
+  clouds:                            # 三维尘埃云
+    count_within_1kpc: 15
+    radius_pc: [5, 60]
+    peak_extinction_mag: [0.5, 8.0]
+  turbulence:                        # 湍流起伏：把尘埃聚成连片的暗云和暗带（平均消光不变）
+    enabled: true
+    sigma_ln: 1.6                    # 对数密度的起伏幅度；越大云越浓、空隙越干净
+    outer_scale_pc: 800              # 最大的云团尺度
+    flattening: 1.8                  # 沿银盘压扁的程度
+    local_bubble_pc: 60              # 太阳周围低密度泡的半径
+    voxel_pc: 8                      # 网格精度（更细的结构交给下面的尘埃云）
+    box_half_pc: 2400                # 起伏只做到这个距离，更远用平滑场
+    z_half_pc: 480
+  background_dark_lanes: derived     # 由上面的尘埃场积分得到，不单独设定
+  #   [推导] 尘埃云是年轻星团、星协、亮星云的诞生地，clusters 会参考它们的位置
+
+# ---------------------------------------------------------------------
+# 4. 恒星族群
+# ---------------------------------------------------------------------
+stars:
+  imf:                              # 初始质量函数：每种质量的星生成多少
+    type: kroupa
+    mass_range_msun: [0.08, 120]
+    slopes: {low: 1.3, high: 2.3, break_msun: 0.5, massive: 2.7, break2_msun: 1.0}
+    #   Kroupa (2001) 场星形式：<0.5 M☉ 斜率 1.3，0.5–1 M☉ 2.3，>1 M☉ 2.7
+    #   massive 改成 2.3 = 星团里测得的值，O、B 星会明显变多
+
+  star_formation_history:           # 决定恒星年龄分布
+    type: constant                  # constant | declining | burst
+    span_gyr: [0, 10]
+    recent_burst:                   # 可选：最近一次的恒星形成小高峰（让天空多一些蓝色亮星）
+      enabled: false
+      age_myr: 30
+      strength: 1.5
+
+  metallicity:                      # 影响很小；主要轻微改变颜色和亮度
+    mean_feh: 0.0
+    sigma: 0.2
+
+  kinematics:
+    velocity_dispersion_kms:        # 越老的星，速度越分散
+      young: 10                     # 年龄 < 1 Gyr
+      old: 40
+    #   [推导] 每颗星的自行和视向速度 → 可以推算任意年代的星位
+    #   观察者自身的运动见 galaxy.observer
+
+# ---------------------------------------------------------------------
+# 5. 演化阶段 + 脉动变星
+#    耦合链：质量 + 年龄 → 演化阶段 → 绝对星等、温度
+#            演化阶段 → 是否落在不稳定带 / 渐近巨星支 → 变星类型
+# ---------------------------------------------------------------------
+evolution:
+  model: simplified_tracks          # 主序、亚巨星、红巨星、水平分支、渐近巨星支、超巨星、白矮星
+  include_white_dwarfs: true        # 肉眼看不见，但近处的会出现在深场里
+  include_brown_dwarfs: false
+
+  pulsating_variables:              # 都由演化阶段自动判断
+    cepheids:                       # 不稳定带内的黄超巨星；周期-光度关系
+      source: derived
+      instability_strip_temp_k: [5500, 6800]
+    delta_scuti:                    # 不稳定带与主序的交点；小幅快速变化，肉眼几乎看不出
+      source: derived
+    long_period_mira:               # 渐近巨星支末端的红巨星；数月内时隐时现
+      source: derived
+      amplitude_mag: [2.5, 8.0]
+      period_days: [100, 500]
+    semiregular_giants:
+      source: derived
+      fraction_of_red_giants: 0.5
+  irregular_extra:                  # 额外的不规则变星（真实的 Lb/Lc 型）：只在冷的演化巨星/超巨星里挑
+    fraction_of_visible: 0.01        # 冷巨星中的比例
+    amplitude_mag: [0.1, 1.0]
+
+# ---------------------------------------------------------------------
+# 6. 双星与聚星 + 食变星
+#    耦合链：质量 → 伴星比例
+#            周期 + 质量 → 间距(AU) → 角距离 → 能否分辨（见 observing）
+#            轨道倾角 + 间距 + 半径 → 是否互相遮挡（食变星）
+# ---------------------------------------------------------------------
+multiplicity:
+  binary_fraction_by_mass:          # 质量越大，越容易有伴星
+    - {mass_msun: [0.08, 0.5], fraction: 0.27}
+    - {mass_msun: [0.5, 1.5],  fraction: 0.45}
+    - {mass_msun: [1.5, 5],    fraction: 0.60}
+    - {mass_msun: [5, 120],    fraction: 0.80}
+  triple_fraction_of_multiples: 0.12
+  period_log10_days: {mean: 5.03, sigma: 2.28}   # 钟形分布，峰值约几百年
+  mass_ratio: {distribution: uniform, range: [0.1, 1.0]}
+  eccentricity: {distribution: uniform, range: [0.0, 0.9]}
+  wide_common_motion_pairs: true    # 很宽的"共动双星"（相距上千天文单位）
+  eclipsing:
+    source: derived                 # 由轨道倾角自动判断是否互相遮挡
+
+# ---------------------------------------------------------------------
+# 7. 星团与星协
+#    耦合链：年龄 → 成员里最亮的是哪类星（成员按 stars.imf 抽，再按 evolution 演化）
+#              < 10 Myr：O、B 型亮星，常伴亮星云
+#              ~100 Myr：B 型星 + 少数红巨星
+#              > 1 Gyr：没有蓝星，红巨星为主
+#            年轻星团、星协优先落在旋臂和尘埃云附近
+# ---------------------------------------------------------------------
+clusters:
+  open_clusters:
+    mode: auto_plus_manual
+    density_per_kpc3: 400            # 只计成员较多、可以辨认的星团
+    members: [50, 2000]
+    age_myr: [5, 2000]               # 年龄按对数均匀抽取
+    core_radius_pc: [0.5, 4]
+    profile: king                    # 中心密、边缘稀
+    shared_motion: true              # 成员一起运动
+  ob_associations:                   # 年轻、松散的蓝色亮星群；主要在旋臂里
+    count_within_1kpc: 8
+    members: [20, 200]
+    age_myr: [3, 30]
+    radius_pc: [15, 80]
+  globular_clusters:                 # 极老（年龄取 thick_disk 上限附近）、极远；望远镜里是一团模糊的光
+    count: 150                       # 整个星系的数量，分布在星系晕里
+  bright_nebulae:                    # 发射星云：由最年轻的星团 / 星协照亮
+    count: 6
+    max_host_age_myr: 10
+    #   超新星遗迹星云见 events.supernovae.remnants
+  manual: []
+  #   manual 示例：
+  #   - name: 七姊妹
+  #     gal_lon_lat_deg: [167, -23]
+  #     distance_pc: 135
+  #     age_myr: 100
+  #     members: 1000
+
+# ---------------------------------------------------------------------
+# 8. 观测能力：大气 + 肉眼 + 望远镜 + 世界内星表
+#    耦合链：口径 + 镜片质量 → 极限星等 → 生成深度（meta）、望远镜星表
+#            口径 + 镜片质量 + 大气抖动 → 分辨率 → 哪些双星能分开
+#            测位精度 → 世界内星表里加多大的误差
+#    真值星表 = 宇宙里实际有什么；世界内星表 = 那个时代的天文学家能知道什么
+# ---------------------------------------------------------------------
+observing:
+  era: galilean
+
+  atmosphere:
+    extinction_mag_per_airmass: 0.25   # 越靠近地平线，星越暗
+    refraction: true
+    seeing_arcsec: 2.0                 # 大气抖动；望远镜分辨率的实际下限
+    airglow: true
+
+  naked_eye:
+    limit_mag: 6.0                     # 无光污染的普通人；好眼力的观测者约 6.5
+    resolution_arcsec: 60
+    position_accuracy_arcsec: 60       # 最好的肉眼测量（大型象限仪）约 1 角分
+    magnitude_precision: 0.5           # 目估，分 1–6 等
+
+  telescope:
+    aperture_mm: 26                    # 伽利略时期的典型值
+    magnification: 20
+    optical_quality: 0.5               # 0–1；镜片质量差，像差明显
+    limit_mag: auto                    # [推导] 2.1 + 5·log10(口径mm) − 质量惩罚 → 约 8.5–9
+    resolution_arcsec: auto            # [推导] max(116/口径mm ÷ 质量, 大气抖动) → 约 10″
+    has_micrometer: false              # 测微计要几十年后才出现 → 望远镜下的星位不准
+    position_accuracy_arcsec: 120
+
+  binary_resolvability:                # [推导] 每对双星标记 resolvable_by
+    #   角距离 > naked_eye.resolution 且两颗都比 naked_eye.limit 亮 → naked_eye
+    #   角距离 > telescope.resolution 且伴星比 telescope.limit 亮 → telescope
+    #   其余 → none（世界内星表里当作一颗星，亮度合并）
+    max_mag_difference: 3.0            # 亮度差太大时，暗的那颗被亮星的光淹没
+
+  knowledge:                           # 这个时代能知道什么
+    parallax_detectable: false         # 测不出任何恒星视差（这本身就是日心说争论的焦点）
+    proper_motion_detectable: false    # 与千年前的古星表比对才可能发现，可作为剧情点
+    spectroscopy: false
+    photometry: visual_estimate
+
+  in_world_catalogs:                   # 带有上面这些误差的星表
+    naked_eye: {format: csv}           # 只含肉眼可见的星
+    telescope: {format: csv}           # 只含望远镜可见的星
+    fields: [id, name, ra, dec, app_mag_estimate, color_word, multiplicity_seen, variable_noticed]
+
+# ---------------------------------------------------------------------
+# 9. 历史事件
+# ---------------------------------------------------------------------
+events:
+  timeline_yr: [-8000, 2000]         # 生成哪段时间（0 = 故事当下；之后的是"未来"，事件表里 future=true）
+  supernovae:
+    galactic_rate_per_century: 1.6
+    type_ia_fraction: 0.2
+    peak_abs_mag: {core_collapse: -17, type_ia: -19.3}
+    remnant_render_boost: 1            # 背景里把遗迹画亮几倍（1 = 物理值，几乎看不见，和真实的天鹅圈一样）
+    remnants: true                   # 生成遗迹（故事当下的样子）：时间线里已爆发的 + 更早 6 万年内的，进深空天体表和背景贴图
+    #   [推导] 尘埃遮挡后（用 dust 的三维场），肉眼可见的大约每千年几次
+    #   核坍缩型只发生在年轻族群里，位置偏向旋臂和 OB 星协
+  novae:
+    galactic_rate_per_year: 30
+    peak_abs_mag: [-10, -6]
+    recurrent_fraction: 0.02
+  comets:                            # 可选：大彗星
+    enabled: true
+    great_comets_per_century: 3
+  manual: []
+  #   manual 示例：
+  #   - type: supernova
+  #     year: -412
+  #     gal_lon_lat_deg: [120, 1.4]
+  #     distance_pc: 2300
+
+# ---------------------------------------------------------------------
+# 10. 特殊天体（"地标"）
+# ---------------------------------------------------------------------
+landmarks:
+  mode: auto_plus_manual
+  auto_constraints:                  # 自动生成后检查；不满足就在附近补一颗合适的星
+    brightest_star_mag_max: -1.2     # 全天至少有一颗非常亮的星
+    bright_red_supergiant: true      # 至少一颗显眼的红超巨星
+    stars_brighter_than_1mag: [12, 25]
+  external_galaxies:                 # 邻近星系：肉眼可见的模糊光斑，画进背景贴图
+    - {name: 外星系_1, mode: auto, apparent_mag: 3.4, size_deg: 3.0}
+    - {name: 外星系_2, mode: auto, apparent_mag: 0.9, size_deg: 9.0}   # 类似大麦哲伦云
+  manual: []
+
+# ---------------------------------------------------------------------
+# 11. 手动覆盖层
+#   在自动生成之后应用；按星的编号修改，修改后重新计算所有推导量
+# ---------------------------------------------------------------------
+overrides:
+  file: overrides.yaml
+  #   完整写法见 overrides.example.yaml（改星、按光谱型反推、改阶段/温度/光度/视星等/位置、删、加、指定超新星）
+  #   改完运行 generate.py --overrides-only，约半分钟
+
+# ---------------------------------------------------------------------
+# 12. 输出
+# ---------------------------------------------------------------------
+output:
+  dir: out/
+  epochs:                            # 要输出哪些年代的星空
+    present_year: 1137                  # [待定] 故事当下（伽利略时代）
+    extra_years: [-3000, -1000]      # 例如：最古星表的年代、某次历法改革的年代
+  truth_catalog:
+    format: csv
+    mag_limit: auto                  # auto = meta.generation_mag_limit
+    fields: [id, name, ra, dec, ecl_lon, ecl_lat, gal_lon, gal_lat,
+             distance_pc, parallax_mas, pm_ra_mas_yr, pm_dec_mas_yr, rv_kms,
+             spectral_type, abs_mag, app_mag, color_bv, temp_k,
+             multiplicity, companion_sep_arcsec, resolvable_by,
+             variable_type, var_period_days, var_amplitude_mag,
+             cluster_id]
+  #   世界内星表的设定见 observing.in_world_catalogs
+  viewer_data:                       # 供 JS 观星器读取
+    stars: binary                    # binary（Float32 数组 + 索引 JSON）| json
+    background_map:
+      resolution: [8192, 4096]       # 全天等距柱状投影（银道坐标）
+      format: png
+  images:
+    all_sky_map: true                # 全天图
+    horizon_views:                   # 某地、某年、某时刻的仰望视角
+      - {year: 0, date: spring_equinox, local_time: "22:00"}
+  event_log: true                    # 历史事件时间线
+
+# ---------------------------------------------------------------------
+# 13. 星座连线与命名（下一阶段）
+# ---------------------------------------------------------------------
+culture:
+  enabled: false
+  cultures: []                       # 同一片星空，不同文化连出不同的星座
+  #   宿的数量见 sky_clock.lunar_mansions

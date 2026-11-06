@@ -1,0 +1,14 @@
+# 生成结果：同一份配置 + 种子可以完整重现，约 750 MB，不进仓库
+out/
+_viewer_test/
+
+# Python
+.venv/
+__pycache__/
+*.pyc
+
+# 运行日志
+*.log
+
+# 本机设置
+.claude/settings.local.json
