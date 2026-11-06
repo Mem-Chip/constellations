@@ -133,7 +133,8 @@ def main():
     rep.frac(S1, "年龄 ≤ 宇宙年龄 13.8 Gyr", int((age > 13.8).sum()), n, 0, 0)
     has1 = np.isfinite(s["c1_mass"])
     nb = int(has1.sum())
-    rep.frac(S1, "伴星初始质量 ≤ 主星", int((s["c1_mass"][has1] > m[has1] * 1.0001).sum()), nb, 0, 0)
+    heavy = has1 & (s["c1_mass"] > m * 1.0001)
+    rep.frac(S1, "伴星初始质量 ≤ 主星", int((heavy & ~ov).sum()), nb, 0, 0, "（不含手动改过的）")
     mt = m + np.nan_to_num(s["c1_mass"])
     P_yr = s["c1_period_d"] / 365.25
     kep = np.abs(s["c1_a_au"] ** 3 / (mt * P_yr ** 2) - 1)
@@ -272,6 +273,9 @@ def main():
         off = (np.abs(dlog_l) > 0.3) | (np.abs(dlog_t) > 0.05)
         ex = [describe(s, i, ids, spt) + f"  轨道上应为 T={ev['Teff'][j]:.0f}K L={ev['L'][j]:.3g}L☉"
               for j, i in enumerate(k) if off[j]]
+        hv = [describe(s, i, ids, spt) + f"  伴星 B {s['c1_mass'][i]:.2f}M☉" for i in k if heavy[i]]
+        rep.add(S4, "手动改过的系统里伴星不比主星重", PASS if not hv else WARN,
+                f"{len(hv)} 个系统的 B 比 A 重（同龄时更重的星会先演化，A/B 的含义就反了）", hv)
         rep.add(S4, "手动改过的星仍在演化轨迹上（|Δlog L|≤0.3、|Δlog T|≤0.05）", PASS if not off.any() else WARN,
                 f"{int(off.sum())} / {k.size} 颗偏离（直接写 teff / luminosity_lsun / abs_mag 时会这样；想保持自洽请用 spectral_type 或 phase）", ex)
 
